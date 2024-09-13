@@ -39,6 +39,7 @@ class Projectile(TypedDict):
 PLAYER_SHIP: str = "☺"
 ENEMY_SHIP: str = "V"
 INITIAL_ENEMY_SPEED: float = 1.0  # Seconds
+MAX_ENEMY_SPEED: float = 0.1  # Seconds
 INITIAL_PROJECTILE_SPEED: float = 0.1  # Seconds
 LEFT_EDGE: int = 0
 RIGHT_EDGE_OFFSET: int = 2
@@ -93,6 +94,18 @@ def move_enemies(
     return enemy_edges, enemy_direction
 
 
+def update_enemy_speed(alive_enemies: List[Enemy], total_enemy_count: int) -> float:
+    destroyed_enemy_count = total_enemy_count - len(alive_enemies)
+    destruction_ratio = destroyed_enemy_count / total_enemy_count
+    # Quadratic scaling
+    speed_factor = destruction_ratio**2
+    enemy_speed = (
+        INITIAL_ENEMY_SPEED - (INITIAL_ENEMY_SPEED - MAX_ENEMY_SPEED) * speed_factor
+    )
+
+    return max(MAX_ENEMY_SPEED, enemy_speed)
+
+
 @curses_safe_run
 def main(stdscr: curses.window):
     width: int = curses.COLS
@@ -120,6 +133,7 @@ def main(stdscr: curses.window):
         {"y": 1, "x": num, "alive": True}
         for num in range(third_of_screen + 1, third_of_screen * 2 + 1, 2)
     ]
+    total_enemy_count: int = len(enemies)
     # Not entirely necessary to eval this here, but it's nice for debug.
     alive_enemies: List[Enemy] = [enemy for enemy in enemies if enemy["alive"]]
     enemy_edges: List[int] = [
@@ -132,7 +146,9 @@ def main(stdscr: curses.window):
     curses.start_color()
     curses.init_pair(1, curses.COLOR_RED, curses.COLOR_BLACK)
 
-    while True:
+    game_over = False
+
+    while not game_over:
         stdscr.clear()
 
         # Status bar
@@ -140,7 +156,7 @@ def main(stdscr: curses.window):
         time_since_last_move: float = curr_time - last_move_time
         status: str = (
             f"{width=} - {height=}, "
-            f"{enemy_speed=}, "
+            f"{enemy_speed=:.2f}, "
             f"{enemy_direction=}, "
             f"{time_since_last_move=:.2f}, "
             f"{enemy_edges=}"
@@ -176,14 +192,27 @@ def main(stdscr: curses.window):
                             alive_enemies = [
                                 enemy for enemy in enemies if enemy["alive"]
                             ]
+                            if len(alive_enemies) == 0:
+                                stdscr.addstr(
+                                    height // 2,
+                                    width // 2 - min(width // 2, 3),
+                                    "you win"[:width],
+                                )
+                                stdscr.refresh()
+                                time.sleep(2)
+                                game_over = True
+                            enemy_speed = update_enemy_speed(
+                                alive_enemies, total_enemy_count
+                            )
                             break
 
         # Enemy ship movement
         if time_since_last_move > enemy_speed:
-            enemy_edges, enemy_direction = move_enemies(
-                alive_enemies, enemy_direction, width
-            )
-            last_move_time = curr_time
+            if alive_enemies:
+                enemy_edges, enemy_direction = move_enemies(
+                    alive_enemies, enemy_direction, width
+                )
+                last_move_time = curr_time
 
         # Handle user input
         player_key = stdscr.getch()
@@ -199,7 +228,7 @@ def main(stdscr: curses.window):
             )
             stdscr.refresh()
             time.sleep(2)
-            break
+            game_over = True
         # handle user input here
         elif player_key == ord(" "):
             if curr_time - last_fire_time >= fire_cooldown:
