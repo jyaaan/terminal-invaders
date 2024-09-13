@@ -7,7 +7,13 @@ This size allows for a "center" and a gap between player and enemies,
 along with a status bar at the top.
 
 Enemies are dynamically spaced across the center third of the screen.
+
+Data structures:
+enemies = [{'y': int, 'x': int, 'alive': bool}]
+projectiles = [{'y': int, 'x': int, 'last_move_time': time.time()}]
 """
+
+from typing import Callable, List, Tuple, TypedDict
 
 import curses
 import time
@@ -16,19 +22,33 @@ import sys
 import subprocess
 import traceback
 
-PLAYER_SHIP = "☺"
-ENEMY_SHIP = "V"
-INITIAL_ENEMY_SPEED = 1.0
-INITIAL_PROJECTILE_SPEED = 0.1
-LEFT_EDGE = 0
-RIGHT_EDGE_OFFSET = 2
+
+class Enemy(TypedDict):
+    y: int
+    x: int
+    alive: bool
+
+
+class Projectile(TypedDict):
+    y: int
+    x: int
+    speed: float
+    last_move_time: float
+
+
+PLAYER_SHIP: str = "☺"
+ENEMY_SHIP: str = "V"
+INITIAL_ENEMY_SPEED: float = 1.0  # Seconds
+INITIAL_PROJECTILE_SPEED: float = 0.1  # Seconds
+LEFT_EDGE: int = 0
+RIGHT_EDGE_OFFSET: int = 2
 
 
 # Decorator to display exceptions while using curses
 # Otherwise exceptions get
 #                          all
 #                              weird
-def curses_safe_run(func):
+def curses_safe_run(func: Callable[..., None]):
     def wrapper(*args, **kwargs):
         try:
             func(*args, **kwargs)
@@ -56,13 +76,17 @@ class TerminalSizeError(Exception):
     pass
 
 
-def move_enemies(enemies, enemy_direction, width):
-    for enemy in enemies:
+def move_enemies(
+    alive_enemies: List[Enemy], enemy_direction: int, width: int
+) -> Tuple[List[int], int]:
+    for enemy in alive_enemies:
         enemy["x"] += enemy_direction
-    enemy_edges = [
-        min(enemies, key=lambda enemy: enemy["x"])["x"],
-        max(enemies, key=lambda enemy: enemy["x"])["x"],
+
+    enemy_edges: List[int] = [
+        min(alive_enemies, key=lambda enemy: enemy["x"])["x"],
+        max(alive_enemies, key=lambda enemy: enemy["x"])["x"],
     ]
+
     # Flip direction of travel if edge of screen reached by leftmost or rightmost enemy.
     if enemy_edges[0] == LEFT_EDGE or enemy_edges[1] == width - 1:
         enemy_direction *= -1
@@ -70,51 +94,51 @@ def move_enemies(enemies, enemy_direction, width):
 
 
 @curses_safe_run
-def main(stdscr):
-    width = curses.COLS
-    height = curses.LINES
+def main(stdscr: curses.window):
+    width: int = curses.COLS
+    height: int = curses.LINES
     if width < 3 or height < 4:
         raise TerminalSizeError(
             "Your terminal must be at least 3 (width) x 4 (height) to play this game."
         )
-    third_of_screen = width // 3
+    third_of_screen: int = width // 3
 
     # Initial settings
     curses.curs_set(0)  # Hides cursor
     stdscr.nodelay(True)  # Don't wait for input
 
-    player_pos = [height - 1, width // 2]  # bottom center
-    projectiles = []
-    # projectiles = [{'y': int, 'x': int, 'last_move_time': time.time()}]
-    projectile_speed = INITIAL_PROJECTILE_SPEED
-    fire_cooldown = 0.5  # Seconds
-    last_fire_time = time.time()
+    player_pos: List[int] = [height - 1, width // 2]  # bottom center
 
-    enemy_direction = 1  # Start right
-    enemy_speed = INITIAL_ENEMY_SPEED  # Seconds per movement.
+    projectiles: List[Projectile] = []
+    fire_cooldown: float = 0.5  # Seconds
+    last_fire_time: float = time.time()
+
+    enemy_direction: int = 1  # Start right
+    enemy_speed: float = INITIAL_ENEMY_SPEED  # Seconds per movement.
     # Dynamically size enemies to occupy third of screen
-    enemies = [
+    enemies: List[Enemy] = [
         {"y": 1, "x": num, "alive": True}
         for num in range(third_of_screen + 1, third_of_screen * 2 + 1, 2)
     ]
     # Not entirely necessary to eval this here, but it's nice for debug.
-    enemy_edges = [
-        min(enemies, key=lambda enemy: enemy["x"])["x"],
-        max(enemies, key=lambda enemy: enemy["x"])["x"],
+    alive_enemies: List[Enemy] = [enemy for enemy in enemies if enemy["alive"]]
+    enemy_edges: List[int] = [
+        min(alive_enemies, key=lambda enemy: enemy["x"])["x"],
+        max(alive_enemies, key=lambda enemy: enemy["x"])["x"],
     ]
-    last_move_time = time.time()
+    last_move_time: float = time.time()
 
     # Colors! Uncomment to officially launch feature.
-    # curses.start_color()
-    # curses.init_pair(1, curses.COLOR_RED, curses.COLOR_BLACK)
+    curses.start_color()
+    curses.init_pair(1, curses.COLOR_RED, curses.COLOR_BLACK)
 
     while True:
         stdscr.clear()
 
         # Status bar
-        curr_time = time.time()
-        time_since_last_move = curr_time - last_move_time
-        status = (
+        curr_time: float = time.time()
+        time_since_last_move: float = curr_time - last_move_time
+        status: str = (
             f"{width=} - {height=}, "
             f"{enemy_speed=}, "
             f"{enemy_direction=}, "
@@ -132,13 +156,9 @@ def main(stdscr):
         for projectile in projectiles:
             stdscr.addch(projectile["y"], projectile["x"], "|")
 
-        # Enemy ship movement
-        if time_since_last_move > enemy_speed:
-            enemy_edges, enemy_direction = move_enemies(enemies, enemy_direction, width)
-            last_move_time = curr_time
-        # put projectile movement here
+        # Projectile movement
         for projectile in projectiles[:]:
-            if curr_time - projectile["last_move_time"] >= projectile_speed:
+            if curr_time - projectile["last_move_time"] >= projectile["speed"]:
                 projectile["y"] -= 1
                 projectile["last_move_time"] = curr_time
 
@@ -153,7 +173,17 @@ def main(stdscr):
                         ):
                             projectiles.remove(projectile)
                             enemy["alive"] = False
+                            alive_enemies = [
+                                enemy for enemy in enemies if enemy["alive"]
+                            ]
                             break
+
+        # Enemy ship movement
+        if time_since_last_move > enemy_speed:
+            enemy_edges, enemy_direction = move_enemies(
+                alive_enemies, enemy_direction, width
+            )
+            last_move_time = curr_time
 
         # Handle user input
         player_key = stdscr.getch()
@@ -177,6 +207,7 @@ def main(stdscr):
                     {
                         "y": player_pos[0] - 1,
                         "x": player_pos[1],
+                        "speed": INITIAL_PROJECTILE_SPEED,
                         "last_move_time": time.time(),
                     }
                 )
