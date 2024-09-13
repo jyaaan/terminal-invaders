@@ -19,6 +19,7 @@ import traceback
 PLAYER_SHIP = "☺"
 ENEMY_SHIP = "V"
 INITIAL_ENEMY_SPEED = 1.0
+INITIAL_PROJECTILE_SPEED = 0.1
 LEFT_EDGE = 0
 RIGHT_EDGE_OFFSET = 2
 
@@ -57,10 +58,10 @@ class TerminalSizeError(Exception):
 
 def move_enemies(enemies, enemy_direction, width):
     for enemy in enemies:
-        enemy[1] += enemy_direction
+        enemy["x"] += enemy_direction
     enemy_edges = [
-        min(enemies, key=lambda enemy: enemy[1])[1],
-        max(enemies, key=lambda enemy: enemy[1])[1],
+        min(enemies, key=lambda enemy: enemy["x"])["x"],
+        max(enemies, key=lambda enemy: enemy["x"])["x"],
     ]
     # Flip direction of travel if edge of screen reached by leftmost or rightmost enemy.
     if enemy_edges[0] == LEFT_EDGE or enemy_edges[1] == width - 1:
@@ -83,17 +84,23 @@ def main(stdscr):
     stdscr.nodelay(True)  # Don't wait for input
 
     player_pos = [height - 1, width // 2]  # bottom center
+    projectiles = []
+    # projectiles = [{'y': int, 'x': int, 'last_move_time': time.time()}]
+    projectile_speed = INITIAL_PROJECTILE_SPEED
+    fire_cooldown = 0.5  # Seconds
+    last_fire_time = time.time()
 
     enemy_direction = 1  # Start right
     enemy_speed = INITIAL_ENEMY_SPEED  # Seconds per movement.
     # Dynamically size enemies to occupy third of screen
     enemies = [
-        [1, num] for num in range(third_of_screen + 1, third_of_screen * 2 + 1, 2)
+        {"y": 1, "x": num, "alive": True}
+        for num in range(third_of_screen + 1, third_of_screen * 2 + 1, 2)
     ]
     # Not entirely necessary to eval this here, but it's nice for debug.
     enemy_edges = [
-        min(enemies, key=lambda enemy: enemy[1])[1],
-        max(enemies, key=lambda enemy: enemy[1])[1],
+        min(enemies, key=lambda enemy: enemy["x"])["x"],
+        max(enemies, key=lambda enemy: enemy["x"])["x"],
     ]
     last_move_time = time.time()
 
@@ -118,13 +125,35 @@ def main(stdscr):
 
         # Render ships
         for enemy in enemies:
-            stdscr.addch(enemy[0], enemy[1], ENEMY_SHIP, curses.color_pair(1))
+            if enemy["alive"]:
+                stdscr.addch(enemy["y"], enemy["x"], ENEMY_SHIP, curses.color_pair(1))
         stdscr.addch(player_pos[0], player_pos[1], PLAYER_SHIP)
+        # put projectile rendering here
+        for projectile in projectiles:
+            stdscr.addch(projectile["y"], projectile["x"], "|")
 
         # Enemy ship movement
         if time_since_last_move > enemy_speed:
             enemy_edges, enemy_direction = move_enemies(enemies, enemy_direction, width)
             last_move_time = curr_time
+        # put projectile movement here
+        for projectile in projectiles[:]:
+            if curr_time - projectile["last_move_time"] >= projectile_speed:
+                projectile["y"] -= 1
+                projectile["last_move_time"] = curr_time
+
+                if projectile["y"] < 1:
+                    projectiles.remove(projectile)
+                else:
+                    for enemy in enemies:
+                        if (
+                            enemy["alive"]
+                            and enemy["y"] == projectile["y"]
+                            and enemy["x"] == projectile["x"]
+                        ):
+                            projectiles.remove(projectile)
+                            enemy["alive"] = False
+                            break
 
         # Handle user input
         player_key = stdscr.getch()
@@ -141,6 +170,17 @@ def main(stdscr):
             stdscr.refresh()
             time.sleep(2)
             break
+        # handle user input here
+        elif player_key == ord(" "):
+            if curr_time - last_fire_time >= fire_cooldown:
+                projectiles.append(
+                    {
+                        "y": player_pos[0] - 1,
+                        "x": player_pos[1],
+                        "last_move_time": time.time(),
+                    }
+                )
+                last_fire_time = curr_time
 
         stdscr.refresh()
 
