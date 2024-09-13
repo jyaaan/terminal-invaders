@@ -38,8 +38,8 @@ class Projectile(TypedDict):
 
 PLAYER_SHIP: str = "☺"
 ENEMY_SHIP: str = "V"
-INITIAL_ENEMY_SPEED: float = 1.0  # Seconds
-MAX_ENEMY_SPEED: float = 0.1  # Seconds
+INITIAL_ENEMY_SPEED: float = 0.5  # Seconds
+MAX_ENEMY_SPEED: float = 0.05  # Seconds
 INITIAL_PROJECTILE_SPEED: float = 0.1  # Seconds
 LEFT_EDGE: int = 0
 RIGHT_EDGE_OFFSET: int = 2
@@ -78,20 +78,33 @@ class TerminalSizeError(Exception):
 
 
 def move_enemies(
-    alive_enemies: List[Enemy], enemy_direction: int, width: int
-) -> Tuple[List[int], int]:
-    for enemy in alive_enemies:
-        enemy["x"] += enemy_direction
+    alive_enemies: List[Enemy],
+    enemy_direction: int,
+    width: int,
+    move_down: bool,
+) -> Tuple[List[int], int, bool]:
+    left_most = width
+    right_most = 0
+    bottom_most = 0
 
-    enemy_edges: List[int] = [
-        min(alive_enemies, key=lambda enemy: enemy["x"])["x"],
-        max(alive_enemies, key=lambda enemy: enemy["x"])["x"],
-    ]
+    for enemy in alive_enemies:
+        if move_down:
+            enemy["y"] += 1
+        else:
+            enemy["x"] += enemy_direction
+        bottom_most = max(bottom_most, enemy["y"])
+        left_most = min(left_most, enemy["x"])
+        right_most = max(right_most, enemy["x"])
 
     # Flip direction of travel if edge of screen reached by leftmost or rightmost enemy.
-    if enemy_edges[0] == LEFT_EDGE or enemy_edges[1] == width - 1:
-        enemy_direction *= -1
-    return enemy_edges, enemy_direction
+    if left_most == LEFT_EDGE or right_most == width - 1:
+        if move_down:
+            enemy_direction *= -1
+            move_down = False
+        else:
+            move_down = True
+
+    return [left_most, right_most, bottom_most], enemy_direction, move_down
 
 
 def update_enemy_speed(alive_enemies: List[Enemy], total_enemy_count: int) -> float:
@@ -141,6 +154,7 @@ def main(stdscr: curses.window):
         max(alive_enemies, key=lambda enemy: enemy["x"])["x"],
     ]
     last_move_time: float = time.time()
+    move_down = False
 
     # Colors! Uncomment to officially launch feature.
     curses.start_color()
@@ -209,10 +223,19 @@ def main(stdscr: curses.window):
         # Enemy ship movement
         if time_since_last_move > enemy_speed:
             if alive_enemies:
-                enemy_edges, enemy_direction = move_enemies(
-                    alive_enemies, enemy_direction, width
+                enemy_edges, enemy_direction, move_down = move_enemies(
+                    alive_enemies, enemy_direction, width, move_down
                 )
                 last_move_time = curr_time
+                if enemy_edges[2] >= height - 1:
+                    stdscr.addstr(
+                        height // 2,
+                        width // 2 - min(width // 2, 4),
+                        "game over"[:width],
+                    )
+                    stdscr.refresh()
+                    time.sleep(2)
+                    game_over = True
 
         # Handle user input
         player_key = stdscr.getch()
