@@ -135,15 +135,17 @@ def main(stdscr):
         ):
             player_pos[1] += 1
         elif player_key == ord("q"):
+            stdscr.addstr(
+                height // 2, width // 2 - min(width // 2, 4), "game over"[:width]
+            )
+            stdscr.refresh()
+            time.sleep(2)
             break
 
         stdscr.refresh()
 
         # Game loop speed, keep it low for responsive player movement
         time.sleep(0.05)
-
-    print("\n game over!")
-    time.sleep(1)
 
 
 curses.wrapper(main)
