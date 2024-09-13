@@ -134,11 +134,16 @@ def main(stdscr):
             player_key == curses.KEY_RIGHT and player_pos[1] < width - RIGHT_EDGE_OFFSET
         ):
             player_pos[1] += 1
+        elif player_key == ord("q"):
+            break
 
         stdscr.refresh()
 
         # Game loop speed, keep it low for responsive player movement
         time.sleep(0.05)
+
+    print("\n game over!")
+    time.sleep(1)
 
 
 curses.wrapper(main)
