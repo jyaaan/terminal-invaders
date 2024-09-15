@@ -38,6 +38,7 @@ class Projectile(TypedDict):
 
 PLAYER_SHIP: str = "☺"
 ENEMY_SHIP: str = "V"
+PROJECTILE_CHR: str = "|"
 INITIAL_ENEMY_SPEED: float = 0.5  # Seconds
 MAX_ENEMY_SPEED: float = 0.05  # Seconds
 INITIAL_PROJECTILE_SPEED: float = 0.1  # Seconds
@@ -82,7 +83,7 @@ def move_enemies(
     enemy_direction: int,
     width: int,
     move_down: bool,
-) -> Tuple[List[int], int, bool]:
+) -> Tuple[int, int, bool]:
     left_most = width
     right_most = 0
     bottom_most = 0
@@ -104,7 +105,7 @@ def move_enemies(
         else:
             move_down = True
 
-    return [left_most, right_most, bottom_most], enemy_direction, move_down
+    return bottom_most, enemy_direction, move_down
 
 
 def update_enemy_speed(alive_enemies: List[Enemy], total_enemy_count: int) -> float:
@@ -147,18 +148,13 @@ def main(stdscr: curses.window):
         for num in range(third_of_screen + 1, third_of_screen * 2 + 1, 2)
     ]
     total_enemy_count: int = len(enemies)
-    # Not entirely necessary to eval this here, but it's nice for debug.
-    alive_enemies: List[Enemy] = [enemy for enemy in enemies if enemy["alive"]]
-    enemy_edges: List[int] = [
-        min(alive_enemies, key=lambda enemy: enemy["x"])["x"],
-        max(alive_enemies, key=lambda enemy: enemy["x"])["x"],
-    ]
     last_move_time: float = time.time()
     move_down = False
 
-    # Colors! Uncomment to officially launch feature.
     curses.start_color()
-    curses.init_pair(1, curses.COLOR_RED, curses.COLOR_BLACK)
+    curses.init_pair(1, curses.COLOR_RED, curses.COLOR_BLACK)  # Enemy ship
+    curses.init_pair(2, curses.COLOR_GREEN, curses.COLOR_BLACK)  # BEAM
+    curses.init_pair(3, curses.COLOR_BLUE, curses.COLOR_BLACK)  # Player ship
 
     game_over = False
 
@@ -173,7 +169,6 @@ def main(stdscr: curses.window):
             f"{enemy_speed=:.2f}, "
             f"{enemy_direction=}, "
             f"{time_since_last_move=:.2f}, "
-            f"{enemy_edges=}"
         )
         stdscr.addstr(0, 0, status[:width])
 
@@ -184,7 +179,9 @@ def main(stdscr: curses.window):
         stdscr.addch(player_pos[0], player_pos[1], PLAYER_SHIP)
         # put projectile rendering here
         for projectile in projectiles:
-            stdscr.addch(projectile["y"], projectile["x"], "|")
+            stdscr.addch(
+                projectile["y"], projectile["x"], PROJECTILE_CHR, curses.color_pair(2)
+            )
 
         # Projectile movement
         for projectile in projectiles[:]:
@@ -223,11 +220,11 @@ def main(stdscr: curses.window):
         # Enemy ship movement
         if time_since_last_move > enemy_speed:
             if alive_enemies:
-                enemy_edges, enemy_direction, move_down = move_enemies(
+                bottom_edge, enemy_direction, move_down = move_enemies(
                     alive_enemies, enemy_direction, width, move_down
                 )
                 last_move_time = curr_time
-                if enemy_edges[2] >= height - 1:
+                if bottom_edge >= height - 1:
                     stdscr.addstr(
                         height // 2,
                         width // 2 - min(width // 2, 4),
