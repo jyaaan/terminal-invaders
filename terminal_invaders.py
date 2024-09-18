@@ -120,6 +120,15 @@ def update_enemy_speed(alive_enemies: List[Enemy], total_enemy_count: int) -> fl
     return max(MAX_ENEMY_SPEED, enemy_speed)
 
 
+from enum import StrEnum
+
+
+class GAME_STATE(StrEnum):
+    PLAY = "play"
+    LOSE = "lose"
+    WIN = "win"
+
+
 @curses_safe_run
 def main(stdscr: curses.window):
     width: int = curses.COLS
@@ -147,6 +156,7 @@ def main(stdscr: curses.window):
         {"y": 1, "x": num, "alive": True}
         for num in range(third_of_screen + 1, third_of_screen * 2 + 1, 2)
     ]
+    alive_enemies: List[Enemy] = [enemy for enemy in enemies if enemy["alive"]]
     total_enemy_count: int = len(enemies)
     last_move_time: float = time.time()
     move_down = False
@@ -156,39 +166,15 @@ def main(stdscr: curses.window):
     curses.init_pair(2, curses.COLOR_GREEN, curses.COLOR_BLACK)  # BEAM
     curses.init_pair(3, curses.COLOR_BLUE, curses.COLOR_BLACK)  # Player ship
 
-    game_over = False
+    game_state: GAME_STATE = GAME_STATE.PLAY
 
-    while not game_over:
+    while game_state == GAME_STATE.PLAY:
         stdscr.clear()
-
-        # Status bar
         curr_time: float = time.time()
-        time_since_last_move: float = curr_time - last_move_time
-        status: str = (
-            f"{width=} - {height=}, "
-            f"{enemy_speed=:.2f}, "
-            f"{enemy_direction=}, "
-            f"{time_since_last_move=:.2f}, "
-        )
-        stdscr.addstr(0, 0, status[:width])
-
-        # Render ships
-        for enemy in enemies:
-            if enemy["alive"]:
-                stdscr.addch(enemy["y"], enemy["x"], ENEMY_SHIP, curses.color_pair(1))
-        stdscr.addch(player_pos[0], player_pos[1], PLAYER_SHIP)
-        # put projectile rendering here
-        for projectile in projectiles:
-            stdscr.addch(
-                projectile["y"], projectile["x"], PROJECTILE_CHR, curses.color_pair(2)
-            )
 
         # Projectile movement
         for projectile in projectiles[:]:
             if curr_time - projectile["last_move_time"] >= projectile["speed"]:
-                projectile["y"] -= 1
-                projectile["last_move_time"] = curr_time
-
                 if projectile["y"] < 1:
                     projectiles.remove(projectile)
                 else:
@@ -204,20 +190,18 @@ def main(stdscr: curses.window):
                                 enemy for enemy in enemies if enemy["alive"]
                             ]
                             if len(alive_enemies) == 0:
-                                stdscr.addstr(
-                                    height // 2,
-                                    width // 2 - min(width // 2, 3),
-                                    "you win"[:width],
-                                )
-                                stdscr.refresh()
-                                time.sleep(2)
-                                game_over = True
+                                game_state = GAME_STATE.WIN
                             enemy_speed = update_enemy_speed(
                                 alive_enemies, total_enemy_count
                             )
                             break
 
+                # Move projectile after collision check
+                projectile["y"] -= 1
+                projectile["last_move_time"] = curr_time
+
         # Enemy ship movement
+        time_since_last_move: float = curr_time - last_move_time
         if time_since_last_move > enemy_speed:
             if alive_enemies:
                 bottom_edge, enemy_direction, move_down = move_enemies(
@@ -225,14 +209,7 @@ def main(stdscr: curses.window):
                 )
                 last_move_time = curr_time
                 if bottom_edge >= height - 1:
-                    stdscr.addstr(
-                        height // 2,
-                        width // 2 - min(width // 2, 4),
-                        "game over"[:width],
-                    )
-                    stdscr.refresh()
-                    time.sleep(2)
-                    game_over = True
+                    game_state = GAME_STATE.LOSE
 
         # Handle user input
         player_key = stdscr.getch()
@@ -243,13 +220,7 @@ def main(stdscr: curses.window):
         ):
             player_pos[1] += 1
         elif player_key == ord("q"):
-            stdscr.addstr(
-                height // 2, width // 2 - min(width // 2, 4), "game over"[:width]
-            )
-            stdscr.refresh()
-            time.sleep(2)
-            game_over = True
-        # handle user input here
+            game_state = GAME_STATE.LOSE
         elif player_key == ord(" "):
             if curr_time - last_fire_time >= fire_cooldown:
                 projectiles.append(
@@ -262,10 +233,45 @@ def main(stdscr: curses.window):
                 )
                 last_fire_time = curr_time
 
-        stdscr.refresh()
+        # Render ships
+        for enemy in enemies:
+            if enemy["alive"]:
+                stdscr.addch(enemy["y"], enemy["x"], ENEMY_SHIP, curses.color_pair(1))
+        stdscr.addch(player_pos[0], player_pos[1], PLAYER_SHIP)
+        # put projectile rendering here
+        for projectile in projectiles:
+            stdscr.addch(
+                projectile["y"], projectile["x"], PROJECTILE_CHR, curses.color_pair(2)
+            )
 
-        # Game loop speed, keep it low for responsive player movement
-        time.sleep(0.05)
+        # Status bar
+        status: str = (
+            f"{width=} - {height=}, "
+            f"{enemy_speed=:.2f}, "
+            f"{enemy_direction=}, "
+            f"{time_since_last_move=:.2f}, "
+        )
+        stdscr.addstr(0, 0, status[:width])
+
+        if game_state == GAME_STATE.LOSE:
+            stdscr.addstr(
+                height // 2, width // 2 - min(width // 2, 4), "game over"[:width]
+            )
+            stdscr.refresh()
+            time.sleep(2)
+        elif game_state == GAME_STATE.WIN:
+            stdscr.addstr(
+                height // 2,
+                width // 2 - min(width // 2, 3),
+                "you win"[:width],
+            )
+            stdscr.refresh()
+            time.sleep(2)
+        else:
+            stdscr.refresh()
+
+            # Game loop speed, keep it low for responsive player movement
+            time.sleep(0.05)
 
 
 curses.wrapper(main)
