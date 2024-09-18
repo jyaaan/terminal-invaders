@@ -159,6 +159,18 @@ def move_projectiles(
     return game_state, enemy_speed
 
 
+def render(stdscr, enemies, player_pos, projectiles):
+    for enemy in enemies:
+        if enemy["alive"]:
+            stdscr.addch(enemy["y"], enemy["x"], ENEMY_SHIP, curses.color_pair(1))
+    stdscr.addch(player_pos[0], player_pos[1], PLAYER_SHIP)
+    # put projectile rendering here
+    for projectile in projectiles:
+        stdscr.addch(
+            projectile["y"], projectile["x"], PROJECTILE_CHR, curses.color_pair(2)
+        )
+
+
 @curses_safe_run
 def main(stdscr: curses.window):
     width: int = curses.COLS
@@ -241,15 +253,7 @@ def main(stdscr: curses.window):
                 last_fire_time = curr_time
 
         # Render ships
-        for enemy in enemies:
-            if enemy["alive"]:
-                stdscr.addch(enemy["y"], enemy["x"], ENEMY_SHIP, curses.color_pair(1))
-        stdscr.addch(player_pos[0], player_pos[1], PLAYER_SHIP)
-        # put projectile rendering here
-        for projectile in projectiles:
-            stdscr.addch(
-                projectile["y"], projectile["x"], PROJECTILE_CHR, curses.color_pair(2)
-            )
+        render(stdscr, enemies, player_pos, projectiles)
 
         # Status bar
         status: str = (
