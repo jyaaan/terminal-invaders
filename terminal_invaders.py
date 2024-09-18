@@ -14,6 +14,7 @@ projectiles = [{'y': int, 'x': int, 'last_move_time': time.time()}]
 """
 
 from typing import Callable, List, Tuple, TypedDict
+from enum import StrEnum
 
 import curses
 import time
@@ -21,6 +22,12 @@ import logging
 import sys
 import subprocess
 import traceback
+
+
+class GAME_STATE(StrEnum):
+    PLAY = "play"
+    LOSE = "lose"
+    WIN = "win"
 
 
 class Enemy(TypedDict):
@@ -120,13 +127,36 @@ def update_enemy_speed(alive_enemies: List[Enemy], total_enemy_count: int) -> fl
     return max(MAX_ENEMY_SPEED, enemy_speed)
 
 
-from enum import StrEnum
+def move_projectiles(
+    projectiles, curr_time, total_enemy_count, enemies, enemy_speed
+) -> tuple[GAME_STATE, float]:
+    game_state = GAME_STATE.PLAY
+    for projectile in projectiles[:]:
+        if curr_time - projectile["last_move_time"] >= projectile["speed"]:
+            if projectile["y"] < 1:
+                projectiles.remove(projectile)
+            else:
+                for enemy in enemies:
+                    if (
+                        enemy["alive"]
+                        and enemy["y"] == projectile["y"]
+                        and enemy["x"] == projectile["x"]
+                    ):
+                        projectiles.remove(projectile)
+                        enemy["alive"] = False
+                        alive_enemies = [enemy for enemy in enemies if enemy["alive"]]
+                        if len(alive_enemies) == 0:
+                            game_state = GAME_STATE.WIN
+                        enemy_speed = update_enemy_speed(
+                            alive_enemies, total_enemy_count
+                        )
+                        break
 
+            # Move projectile after collision check
+            projectile["y"] -= 1
+            projectile["last_move_time"] = curr_time
 
-class GAME_STATE(StrEnum):
-    PLAY = "play"
-    LOSE = "lose"
-    WIN = "win"
+    return game_state, enemy_speed
 
 
 @curses_safe_run
@@ -173,32 +203,9 @@ def main(stdscr: curses.window):
         curr_time: float = time.time()
 
         # Projectile movement
-        for projectile in projectiles[:]:
-            if curr_time - projectile["last_move_time"] >= projectile["speed"]:
-                if projectile["y"] < 1:
-                    projectiles.remove(projectile)
-                else:
-                    for enemy in enemies:
-                        if (
-                            enemy["alive"]
-                            and enemy["y"] == projectile["y"]
-                            and enemy["x"] == projectile["x"]
-                        ):
-                            projectiles.remove(projectile)
-                            enemy["alive"] = False
-                            alive_enemies = [
-                                enemy for enemy in enemies if enemy["alive"]
-                            ]
-                            if len(alive_enemies) == 0:
-                                game_state = GAME_STATE.WIN
-                            enemy_speed = update_enemy_speed(
-                                alive_enemies, total_enemy_count
-                            )
-                            break
-
-                # Move projectile after collision check
-                projectile["y"] -= 1
-                projectile["last_move_time"] = curr_time
+        game_state, enemy_speed = move_projectiles(
+            projectiles, curr_time, total_enemy_count, enemies, enemy_speed
+        )
 
         # Enemy ship movement
         time_since_last_move: float = curr_time - last_move_time
