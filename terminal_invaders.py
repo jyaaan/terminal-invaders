@@ -118,7 +118,7 @@ def move_enemies(
 def update_enemy_speed(alive_enemies: List[Enemy], total_enemy_count: int) -> float:
     destroyed_enemy_count = total_enemy_count - len(alive_enemies)
     destruction_ratio = destroyed_enemy_count / total_enemy_count
-    # Quadratic scaling
+    # Quadratic scaling, remove square for linear scaling
     speed_factor = destruction_ratio**2
     enemy_speed = (
         INITIAL_ENEMY_SPEED - (INITIAL_ENEMY_SPEED - MAX_ENEMY_SPEED) * speed_factor
@@ -128,7 +128,11 @@ def update_enemy_speed(alive_enemies: List[Enemy], total_enemy_count: int) -> fl
 
 
 def move_projectiles(
-    projectiles, curr_time, total_enemy_count, enemies, enemy_speed
+    projectiles: List[Projectile],
+    curr_time: float,
+    total_enemy_count: int,
+    enemies: List[Enemy],
+    enemy_speed: float,
 ) -> tuple[GAME_STATE, float]:
     game_state = GAME_STATE.PLAY
     for projectile in projectiles[:]:
@@ -159,12 +163,21 @@ def move_projectiles(
     return game_state, enemy_speed
 
 
-def render(stdscr, enemies, player_pos, projectiles):
+def render(
+    stdscr: curses.window,
+    enemies: List[Enemy],
+    player_pos: List[int],
+    projectiles: List[Projectile],
+) -> None:
+    # Render enemies
     for enemy in enemies:
         if enemy["alive"]:
             stdscr.addch(enemy["y"], enemy["x"], ENEMY_SHIP, curses.color_pair(1))
+
+    # Render player
     stdscr.addch(player_pos[0], player_pos[1], PLAYER_SHIP)
-    # put projectile rendering here
+
+    # Render projectiles
     for projectile in projectiles:
         stdscr.addch(
             projectile["y"], projectile["x"], PROJECTILE_CHR, curses.color_pair(2)
